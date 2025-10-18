@@ -1,0 +1,33 @@
+name: Sync GPT Reviews
+
+on:
+  schedule:
+    - cron: "0 13 1,15 * *"  # 1st and 15th each month at 09:00 AM ET
+  workflow_dispatch:  # Allow manual trigger
+
+jobs:
+  run-sync:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v3
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: 3.10
+
+    - name: Install dependencies
+      run: pip install -r requirements.txt
+
+    - name: Run review sync script
+      env:
+        SNOWFLAKE_USER: USER1204
+        SNOWFLAKE_PASSWORD: ${{ secrets.SNOWFLAKE_PASSWORD }}
+        SNOWFLAKE_ACCOUNT: XUZXIIE-EAC06737
+        SNOWFLAKE_WAREHOUSE: COMPUTE_WH
+        SNOWFLAKE_DATABASE: GPT_REVIEWS_DB
+        SNOWFLAKE_SCHEMA: PUBLIC
+        SNOWFLAKE_ROLE: ACCOUNTADMIN
+      run: python review_sync.py
