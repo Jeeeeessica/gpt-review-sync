@@ -1,0 +1,4 @@
+google-play-scraper
+snowflake-connector-python
+pandas
+tqdm
