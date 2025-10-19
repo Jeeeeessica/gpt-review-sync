@@ -1,4 +1,4 @@
-# Database & Ingestion Pipeline***
+# Database & Ingestion Pipeline
 
 Automatically fetches the latest user reviews and metadata from the ChatGPT app on Google Play, and stores them into Snowflake.
 - Python script to collect and upload data
