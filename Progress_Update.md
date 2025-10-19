@@ -8,6 +8,8 @@
   - **app_metadata** — app-level metrics like score, installs, IAP, etc.
 - Set up a biweekly automation via GitHub Actions to ensure consistent data ingestion moving forward.
 - Removed non-essential fields (`user_image`, `thumbs_up`) to keep the schema clean and focused.
+
+
 *analysis.py*
 - Updated to read directly from Snowflake for consistent integration
 
