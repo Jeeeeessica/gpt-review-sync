@@ -1,0 +1,23 @@
+name: Monthly Review Update
+
+on:
+  schedule:
+    - cron: '0 1 1 * *'  
+  workflow_dispatch:     
+
+jobs:
+  update-reviews:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+      - name: Install dependencies
+        run: pip install google-play-scraper snowflake-connector-python pandas tqdm
+      - name: Run monthly review update
+        run: python review_update.py
+        env:
+          SNOWFLAKE_PASSWORD: ${{ secrets.SNOWFLAKE_PASSWORD }}
+
