@@ -1,13 +1,24 @@
 # Database & Ingestion Pipeline
 
 Automatically fetches the latest user reviews and metadata from the ChatGPT app on Google Play, and stores them into Snowflake.
-- Python script to collect and upload data
-- Snowflake integration
-- GitHub Actions for automated scheduling 
-- Two structured tables: reviews and app_metadata
 
-**Data Schema**
+- Python scripts to collect and upload data
+- Snowflake data warehouse integration
+- GitHub Actions for automated scheduling
+- Two structured tables: `reviews` and `app_metadata`
 
+
+### Script Overview
+
+| File              | Purpose |
+|-------------------|---------|
+| `review_sync.py`  | Initial full ingestion of all available reviews and populate the `reviews` table in Snowflake. |
+| `review_update.py`| Automated incremental updates. Scheduled to run monthly via GitHub Actions to fetch only new reviews and upsert them into Snowflake. |
+
+
+##Data Schema
+
+### `reviews` table
 | Column        | Type      | Description               |
 | ------------- | --------- | ------------------------- |
 | `review_id`   | STRING    | Unique ID per review      |
@@ -16,6 +27,8 @@ Automatically fetches the latest user reviews and metadata from the ChatGPT app 
 | `score`       | INT       | Rating (1–5)              |
 | `created_at`  | TIMESTAMP | Date & time of review     |
 | `app_version` | STRING    | App version of the review |
+
+### `app_metadata` table 
 
 | Column          | Type      | Description                       |
 | --------------- | --------- | --------------------------------- |
@@ -33,9 +46,13 @@ Automatically fetches the latest user reviews and metadata from the ChatGPT app 
 | `iap_range`     | STRING    | In-app price range                |
 | `fetched_at`    | TIMESTAMP | When the metadata was collected   |
 
-**GitHub Actions Schedule**
-This project is set up to run automatically every 2 weeks or trigger manually via GitHub UI
-Using cron inside .github/workflows/sync.yml
+
+## GitHub Actions Schedule
+
+This repository is configured to run data updates automatically every month using [GitHub Actions](https://docs.github.com/en/actions).
+- Workflow file: `.github/workflows/review_update.yml`
+- Schedule: `0 1 1 * *` → Runs on the 1st of each month at 01:00 UTC
+- Manual trigger supported via GitHub UI
 
 
 # ChatGPT App Review Analysis 
