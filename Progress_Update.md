@@ -1,21 +1,27 @@
 # 2025-10-18 Update
 
 ## Summary
-*review_sync.py*
+
+### review_sync.py
 - Implemented a structured ingestion pipeline to fetch user reviews and app metadata from the ChatGPT Android app via the Google Play API.
 - Designed two Snowflake tables:
   - **reviews** — user-submitted reviews with rating, version, and timestamp  
   - **app_metadata** — app-level metrics like score, installs, IAP, etc.
-- Set up a biweekly automation via GitHub Actions to ensure consistent data ingestion moving forward.
 - Removed non-essential fields (`user_image`, `thumbs_up`) to keep the schema clean and focused.
 
+### review_update.py
 
-*analysis.py*
+- Handles automated incremental updates to fetch only new reviews monthly via GitHub Actions.
+- Queries Snowflake to determine the latest `created_at` timestamp and avoids re-ingesting existing reviews.
+  
+### analysis.py
 - Updated to read directly from Snowflake for consistent integration
 
 ## Note
 - The Google Play API only exposes metadata for the latest app version, so historical version-level info is not available. 
 - To address this, an automated pipeline now captures and archives metadata snapshots into Snowflake.
+
+
 
 
 # 2025-10-15 Update
