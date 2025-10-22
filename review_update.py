@@ -167,16 +167,6 @@ else:
     """
     cursor.execute(merge_sql)
 
-    # Print merge result
-    cursor.execute("""
-    SELECT metadata$action, COUNT(*)
-    FROM TABLE(RESULT_SCAN(LAST_QUERY_ID()))
-    GROUP BY metadata$action;
-    """)
-    results = cursor.fetchall()
-    print("\nMERGE Summary:")
-    for action, count in results:
-        print(f"{action}: {count:,} rows")
 
     conn.commit()
     cursor.close()
