@@ -1,4 +1,5 @@
 # monitor_pipeline.py
+# Unified Eastern Time version with anomaly alert and Snowflake logging
 
 import os
 import time
@@ -181,4 +182,5 @@ Time (ET): {datetime.now(ET).strftime('%Y-%m-%d %H:%M:%S')}
 
 if __name__ == "__main__":
     main()
+
 
