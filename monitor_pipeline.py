@@ -1,13 +1,38 @@
-# monitor_pipeline.py
-# ---------------------------------------
-# Monitors the execution of review_update.py and logs run results to Snowflake.
-# Adds simple anomaly detection based on monthly comparison.
-# ---------------------------------------
-
 import os
 import time
 import traceback
 import snowflake.connector
+import smtplib
+from email.mime.text import MIMEText
+
+
+def send_email(subject, body):
+    """Send a simple email alert via SMTP."""
+    try:
+        smtp_server = os.getenv("SMTP_SERVER")
+        smtp_port = int(os.getenv("SMTP_PORT", 587))
+        smtp_user = os.getenv("SMTP_USER")
+        smtp_password = os.getenv("SMTP_PASSWORD")
+        recipients = os.getenv("ALERT_EMAILS", "").split(",")
+
+        if not recipients or recipients == [""]:
+            print("No ALERT_EMAILS configured. Skipping email alert.")
+            return
+
+        msg = MIMEText(body)
+        msg["Subject"] = subject
+        msg["From"] = smtp_user
+        msg["To"] = ", ".join(recipients)
+
+        with smtplib.SMTP(smtp_server, smtp_port) as server:
+            server.starttls()
+            server.login(smtp_user, smtp_password)
+            server.sendmail(smtp_user, recipients, msg.as_string())
+
+        print(f"Email alert sent to: {recipients}")
+
+    except Exception as e:
+        print("Failed to send email:", e)
 
 
 def log_to_snowflake(status, rows_loaded, error_message, duration, anomaly_flag=None):
@@ -23,7 +48,6 @@ def log_to_snowflake(status, rows_loaded, error_message, duration, anomaly_flag=
         )
         cur = conn.cursor()
 
-        # Create table if not exists
         cur.execute("""
             CREATE TABLE IF NOT EXISTS PIPELINE_MONITORING (
                 DATE DATE,
@@ -37,11 +61,9 @@ def log_to_snowflake(status, rows_loaded, error_message, duration, anomaly_flag=
             );
         """)
 
-        # Truncate error message if too long
         if error_message:
             error_message = error_message[:800] + " ..." if len(error_message) > 800 else error_message
 
-        # Insert log record
         cur.execute("""
             INSERT INTO PIPELINE_MONITORING
             (DATE, TASK_NAME, STATUS, ROWS_LOADED, ERROR_MESSAGE, DURATION_SEC, ANOMALY_FLAG)
@@ -111,7 +133,6 @@ def main():
         else:
             raise RuntimeError("review_update.main() not found")
 
-        # Simple anomaly detection
         last_rows = get_last_run_rows()
         if last_rows and last_rows > 0:
             diff_ratio = rows_loaded / last_rows if last_rows else 1
@@ -132,6 +153,12 @@ def main():
         duration = round(time.time() - start_time, 2)
         print(f"Pipeline finished in {duration} seconds with status: {status}")
         log_to_snowflake(status, rows_loaded, error_message, duration, anomaly_flag)
+
+        # Send alert only if failure or anomaly
+        if status == "FAILURE" or (anomaly_flag and anomaly_flag.startswith("WARNING")):
+            subject = f"[Pipeline Alert] review_update.py {status}"
+            body = f"Status: {status}\nRows Loaded: {rows_loaded}\nDuration: {duration}s\n\n{anomaly_flag or ''}\n\n{error_message or ''}"
+            send_email(subject, body)
 
 
 if __name__ == "__main__":
