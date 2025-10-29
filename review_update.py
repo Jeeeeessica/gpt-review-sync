@@ -1,28 +1,26 @@
 # review_update.py
-# Fetch new Google Play reviews and upload them to Snowflake (Eastern Time version)
+# Fetch new Google Play reviews and upload them to Snowflake (Eastern Time aligned)
 
 from google_play_scraper import reviews, Sort, app
 import pandas as pd
 import snowflake.connector
-from datetime import datetime, timedelta
-import pytz
+from datetime import datetime, timedelta, timezone
 from tqdm import tqdm
 import time
 import os
 import sys
 import traceback
+import pytz  # added
 
-# Define Eastern Time (ET)
+# Define Eastern Time zone
 ET = pytz.timezone("America/New_York")
-
 
 def main():
     """Fetch new Google Play reviews and upload them to Snowflake."""
-    rows_loaded = 0
+    rows_loaded = 0  # Default in case no new data
     try:
-        print("=== Starting Monthly Review Update (ET timezone) ===")
+        print("Connecting to Snowflake...")
 
-        # --- Snowflake connection ---
         conn_params = {
             "user": os.getenv("SNOWFLAKE_USER", "USER1204"),
             "password": os.environ["SNOWFLAKE_PASSWORD"],
@@ -36,7 +34,7 @@ def main():
         conn = snowflake.connector.connect(**conn_params)
         cursor = conn.cursor()
 
-        # --- Ensure target table exists ---
+        # Ensure target table exists
         cursor.execute("""
         CREATE TABLE IF NOT EXISTS reviews (
             review_id STRING PRIMARY KEY,
@@ -48,22 +46,21 @@ def main():
         )
         """)
 
-        # --- Find last uploaded time ---
+        # Get latest review timestamp
         cursor.execute("SELECT MAX(created_at) FROM reviews")
         last_uploaded = cursor.fetchone()[0]
-
         if last_uploaded is None:
+            # Use ET baseline instead of UTC
             last_uploaded = datetime.now(ET) - timedelta(days=30)
         else:
-            last_uploaded = last_uploaded.replace(tzinfo=pytz.UTC).astimezone(ET)
+            # Convert DB timestamp (naive UTC) to ET
+            last_uploaded = last_uploaded.replace(tzinfo=timezone.utc).astimezone(ET)
 
-        print(f"Last review timestamp (ET): {last_uploaded.strftime('%Y-%m-%d %H:%M:%S')}")
-        print(f"Current time (ET): {datetime.now(ET).strftime('%Y-%m-%d %H:%M:%S')}")
-        print(f"Time gap since last upload: {(datetime.now(ET) - last_uploaded).total_seconds() / 3600:.2f} hours")
+        print(f"Last review timestamp (ET): {last_uploaded}")
 
-        # --- Fetch new reviews ---
-        app_id = "com.openai.chatgpt"
+        # Fetch reviews
         print("Fetching new reviews from Google Play...")
+        app_id = "com.openai.chatgpt"
         buf, token, first = [], None, True
         pbar = tqdm(desc="Fetching", unit="reviews")
 
@@ -79,7 +76,6 @@ def main():
             if not res:
                 break
 
-            # Compare using ET timezone
             new_data = [r for r in res if r["at"].astimezone(ET) > last_uploaded]
             if not new_data:
                 break
@@ -98,8 +94,9 @@ def main():
             rows_loaded = len(df)
             print(f"Fetched {rows_loaded:,} new reviews.")
 
-            # --- Clean & transform ---
+            # Clean and normalize time
             df['at'] = pd.to_datetime(df['at'], errors='coerce')
+            df['at'] = df['at'].dt.tz_convert(ET).dt.tz_convert('UTC')  # store as UTC
             df.rename(columns={
                 "reviewId": "review_id",
                 "userName": "user_name",
@@ -109,16 +106,20 @@ def main():
                 "appVersion": "app_version"
             }, inplace=True)
 
-            df = df[["review_id", "user_name", "content", "score", "created_at", "app_version"]]
+            df = df[[
+                "review_id", "user_name", "content",
+                "score", "created_at", "app_version"
+            ]]
 
-            # --- Create staging table ---
+            # Create staging table
             cursor.execute("CREATE OR REPLACE TEMPORARY TABLE reviews_staging LIKE reviews;")
 
             records = []
             for _, row in df.iterrows():
                 created_at = (
-                    row["created_at"].astimezone(ET).strftime("%Y-%m-%d %H:%M:%S")
-                    if pd.notnull(row["created_at"]) else None
+                    row["created_at"].strftime("%Y-%m-%d %H:%M:%S")
+                    if pd.notnull(row["created_at"])
+                    else None
                 )
                 records.append((
                     row["review_id"],
@@ -129,7 +130,9 @@ def main():
                     row["app_version"]
                 ))
 
+            print(f"Total records to insert: {len(records):,}")
             BATCH_SIZE = 200000
+
             insert_sql = """
             INSERT INTO reviews_staging (
                 review_id, user_name, content, score, created_at, app_version
@@ -162,10 +165,10 @@ def main():
             conn.commit()
             print("Reviews updated successfully.")
 
-        # --- Insert app metadata ---
+        # Insert app metadata
         print("\nFetching app metadata...")
         metadata = app(app_id, lang="en", country="us")
-        fetched_at = datetime.now(ET).strftime("%Y-%m-%d %H:%M:%S")
+        fetched_at = datetime.now(ET).astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
 
         metadata_row = {
             "APP_VERSION": metadata.get("version"),
@@ -226,7 +229,7 @@ def main():
         conn.close()
 
         print("App metadata inserted successfully.")
-        print(f"Successfully loaded {rows_loaded} new reviews.")
+        print(f"ROWS_LOADED={rows_loaded}")
         return rows_loaded
 
     except Exception:
