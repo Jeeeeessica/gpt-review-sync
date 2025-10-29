@@ -216,3 +216,6 @@ except Exception as e:
     print(" Script failed with error:")
     traceback.print_exc()
     sys.exit(1)
+
+print(f"ROWS_LOADED={len(new_data)}")
+
