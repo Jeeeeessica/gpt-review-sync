@@ -1,13 +1,20 @@
+# monitor_pipeline.py
+
 import os
 import time
 import traceback
 import smtplib
 from email.mime.text import MIMEText
 import snowflake.connector
+from datetime import datetime
+import pytz
+
+# Define Eastern Time (America/New_York)
+ET = pytz.timezone("America/New_York")
 
 
 def log_to_snowflake(status, rows_loaded, error_message, duration, anomaly_flag=None):
-    """Write pipeline run log into Snowflake table PIPELINE_MONITORING."""
+    """Write pipeline run log into Snowflake table PIPELINE_MONITORING (ET timezone)."""
     try:
         conn = snowflake.connector.connect(
             user=os.getenv("SNOWFLAKE_USER"),
@@ -19,7 +26,7 @@ def log_to_snowflake(status, rows_loaded, error_message, duration, anomaly_flag=
         )
         cur = conn.cursor()
 
-        # Create table if it does not exist
+        # Create table if not exists
         cur.execute("""
             CREATE TABLE IF NOT EXISTS PIPELINE_MONITORING (
                 DATE DATE,
@@ -29,7 +36,8 @@ def log_to_snowflake(status, rows_loaded, error_message, duration, anomaly_flag=
                 ERROR_MESSAGE STRING,
                 DURATION_SEC FLOAT,
                 ANOMALY_FLAG STRING,
-                TIMESTAMP TIMESTAMP_NTZ DEFAULT CURRENT_TIMESTAMP
+                TIMESTAMP TIMESTAMP_NTZ,
+                LOGGED_AT STRING
             );
         """)
 
@@ -37,15 +45,20 @@ def log_to_snowflake(status, rows_loaded, error_message, duration, anomaly_flag=
         if error_message:
             error_message = error_message[:800] + " ..." if len(error_message) > 800 else error_message
 
-        # Insert log record
+        # Get current ET time
+        now_et = datetime.now(ET)
+        date_et = now_et.date()
+        timestamp_str = now_et.strftime("%Y-%m-%d %H:%M:%S")
+
+        # Insert log
         cur.execute("""
             INSERT INTO PIPELINE_MONITORING
-            (DATE, TASK_NAME, STATUS, ROWS_LOADED, ERROR_MESSAGE, DURATION_SEC, ANOMALY_FLAG)
-            VALUES (CURRENT_DATE(), 'review_update', %s, %s, %s, %s, %s)
-        """, (status, rows_loaded, error_message, duration, anomaly_flag))
+            (DATE, TASK_NAME, STATUS, ROWS_LOADED, ERROR_MESSAGE, DURATION_SEC, ANOMALY_FLAG, TIMESTAMP, LOGGED_AT)
+            VALUES (%s, 'review_update', %s, %s, %s, %s, %s, %s, %s)
+        """, (date_et, status, rows_loaded, error_message, duration, anomaly_flag, timestamp_str, timestamp_str))
 
         conn.commit()
-        print("Pipeline status logged successfully in Snowflake.")
+        print(f"Pipeline status logged successfully at {timestamp_str} ET.")
 
     except Exception as e:
         print("Failed to log to Snowflake:", e)
@@ -161,9 +174,11 @@ Rows loaded: {rows_loaded}
 Anomaly flag: {anomaly_flag}
 Duration: {duration} seconds
 Error: {error_message or 'None'}
+Time (ET): {datetime.now(ET).strftime('%Y-%m-%d %H:%M:%S')}
 """
             send_email(subject, body)
 
 
 if __name__ == "__main__":
     main()
+
