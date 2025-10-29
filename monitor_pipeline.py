@@ -15,6 +15,7 @@ import os
 import time
 import traceback
 import snowflake.connector
+import subprocess
 import re
 
 
@@ -44,7 +45,7 @@ def log_to_snowflake(status, rows_loaded, error_message, duration):
             );
         """)
 
-        # Truncate error message if too long
+        # Truncate long error message
         if error_message:
             error_message = error_message[:800] + " ..." if len(error_message) > 800 else error_message
 
@@ -78,17 +79,25 @@ def main():
 
     try:
         print("Running main task: review_update.py ...")
-        import review_update
 
-        # If review_update.py has main() function, call it
-        if hasattr(review_update, "main"):
-            rows_loaded = review_update.main()
-            print(f"review_update.main() completed successfully. Rows loaded: {rows_loaded}")
+        # Run the script and capture stdout/stderr
+        result = subprocess.run(
+            ["python", "review_update.py"],
+            capture_output=True,
+            text=True
+        )
+
+        # Print script output
+        print(result.stdout)
+        if result.returncode != 0:
+            status = "FAILURE"
+            error_message = result.stderr
         else:
-            print("No main() found in review_update.py, running script directly.")
-            exit_code = os.system("python review_update.py")
-            if exit_code != 0:
-                raise RuntimeError(f"review_update.py exited with code {exit_code}")
+            # Extract "ROWS_LOADED" from output if present
+            match = re.search(r"ROWS_LOADED=(\d+)", result.stdout)
+            if match:
+                rows_loaded = int(match.group(1))
+            print(f"review_update.py completed successfully. Rows loaded: {rows_loaded}")
 
     except Exception:
         status = "FAILURE"
@@ -106,7 +115,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-match = re.search(r"ROWS_LOADED=(\d+)", result.stdout)
-if match:
-    rows_loaded = int(match.group(1))
