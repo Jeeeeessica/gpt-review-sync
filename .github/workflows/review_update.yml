@@ -2,12 +2,13 @@ name: Monthly Review Update
 
 on:
   schedule:
-    - cron: '0 1 1 * *'  
-  workflow_dispatch:  
+    - cron: '0 1 1 * *'    # run on the 1st day of each month at 01:00 UTC
+  workflow_dispatch:        # allow manual run
 
 jobs:
   update-reviews:
     runs-on: ubuntu-latest
+
     steps:
       - uses: actions/checkout@v4
 
@@ -27,12 +28,22 @@ jobs:
       - name: Monitor pipeline and log result
         run: python monitor_pipeline.py
         env:
+          # Snowflake connection
           SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
           SNOWFLAKE_PASSWORD: ${{ secrets.SNOWFLAKE_PASSWORD }}
           SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
           SNOWFLAKE_WAREHOUSE: ${{ secrets.SNOWFLAKE_WAREHOUSE }}
           SNOWFLAKE_DATABASE: ${{ secrets.SNOWFLAKE_DATABASE }}
           SNOWFLAKE_SCHEMA: ${{ secrets.SNOWFLAKE_SCHEMA }}
+
+          # Email alert configuration
+          SMTP_HOST: ${{ secrets.SMTP_HOST }}          # e.g. smtp.gmail.com
+          SMTP_PORT: ${{ secrets.SMTP_PORT }}          # usually 465
+          SMTP_USER: ${{ secrets.SMTP_USER }}          # login username
+          SMTP_PASS: ${{ secrets.SMTP_PASS }}          # app password or token
+          ALERT_FROM: ${{ secrets.ALERT_FROM }}        # sender email
+          ALERT_TO: ${{ secrets.ALERT_TO }}            # recipient email
+
 
 
 
