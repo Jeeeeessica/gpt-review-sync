@@ -1,3 +1,27 @@
+# 2025-10-29 Update
+
+## Summary
+
+### monitor_pipeline.py  
+- tracks the execution of `review_update.py` and logs each run to Snowflake (`PIPELINE_MONITORING`).  
+- Captures key operational metrics — `STATUS`, `ROWS_LOADED`, `DURATION_SEC`, `ERROR_MESSAGE`.  
+- Added **email alerts** to notify when failures or data anomalies occur.  
+
+### Refresh.sql  
+- Introduced a dashboard refresh procedure (`DASHBOARD_REFRESH_PROC`) that builds a combined monitoring view.  
+- The procedure joins the operational log table `PIPELINE_MONITORING` with the data table `REVIEWS`, adds field-level quality checks, and flags anomalies. 
+- A scheduled task (`DASHBOARD_MONTHLY_REFRESH_TASK`) automatically refreshes this dashboard view on the 1st day of each month.  
+
+### Snowflake Dashboard  
+https://app.snowflake.com/us-east-1/ecc13202/#/review-pipeline-monitoring-dX92HO3pp
+- 1. Pipeline Performance (Pipeline Duration Trend /Rows Loaded Trend)
+- 2. Data Quality (Missing Content % Trend / Review Data Completeness)
+- 3. Anomaly Detection (Anomaly Count Trend / Anomaly Type Distribution)
+
+## Known Issue  
+- The latest run shows **`ROWS_LOADED = 0`** but status is still marked as **`SUCCESS`** in `PIPELINE_MONITORING`.  
+
+
 # 2025-10-18 Update
 
 ## Summary
