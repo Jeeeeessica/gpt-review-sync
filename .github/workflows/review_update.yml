@@ -2,7 +2,7 @@ name: Monthly Review Update
 
 on:
   schedule:
-    - cron: '0 1 1 * *'    # run on the 1st day of each month at 01:00 UTC
+    - cron: '0 6 1 * *'    # run on the 1st day of each month at 01:00 ET (which is 06:00 UTC)
   workflow_dispatch:        # allow manual run
 
 jobs:
@@ -37,12 +37,12 @@ jobs:
           SNOWFLAKE_SCHEMA: ${{ secrets.SNOWFLAKE_SCHEMA }}
 
           # Email alert configuration
-          SMTP_HOST: ${{ secrets.SMTP_HOST }}          # e.g. smtp.gmail.com
-          SMTP_PORT: ${{ secrets.SMTP_PORT }}          # usually 465
-          SMTP_USER: ${{ secrets.SMTP_USER }}          # login username
-          SMTP_PASS: ${{ secrets.SMTP_PASS }}          # app password or token
-          ALERT_FROM: ${{ secrets.ALERT_FROM }}        # sender email
-          ALERT_TO: ${{ secrets.ALERT_TO }}            # recipient email
+          SMTP_HOST: ${{ secrets.SMTP_HOST }}          
+          SMTP_PORT: ${{ secrets.SMTP_PORT }}          
+          SMTP_USER: ${{ secrets.SMTP_USER }}         
+          SMTP_PASS: ${{ secrets.SMTP_PASS }}          
+          ALERT_FROM: ${{ secrets.ALERT_FROM }}        
+          ALERT_TO: ${{ secrets.ALERT_TO }}           
 
 
 
