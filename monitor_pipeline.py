@@ -15,6 +15,7 @@ import os
 import time
 import traceback
 import snowflake.connector
+import re
 
 
 def log_to_snowflake(status, rows_loaded, error_message, duration):
@@ -105,3 +106,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+match = re.search(r"ROWS_LOADED=(\d+)", result.stdout)
+if match:
+    rows_loaded = int(match.group(1))
