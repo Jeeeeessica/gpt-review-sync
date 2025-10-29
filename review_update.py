@@ -1,5 +1,4 @@
 # review_update.py
-# Fetch new Google Play reviews and upload them to Snowflake (Eastern Time aligned)
 
 from google_play_scraper import reviews, Sort, app
 import pandas as pd
@@ -10,10 +9,7 @@ import time
 import os
 import sys
 import traceback
-import pytz  # added
 
-# Define Eastern Time zone
-ET = pytz.timezone("America/New_York")
 
 def main():
     """Fetch new Google Play reviews and upload them to Snowflake."""
@@ -46,17 +42,12 @@ def main():
         )
         """)
 
-        # Get latest review timestamp
         cursor.execute("SELECT MAX(created_at) FROM reviews")
         last_uploaded = cursor.fetchone()[0]
         if last_uploaded is None:
-            # Use ET baseline instead of UTC
-            last_uploaded = datetime.now(ET) - timedelta(days=30)
-        else:
-            # Convert DB timestamp (naive UTC) to ET
-            last_uploaded = last_uploaded.replace(tzinfo=timezone.utc).astimezone(ET)
+            last_uploaded = datetime.utcnow() - timedelta(days=30)
 
-        print(f"Last review timestamp (ET): {last_uploaded}")
+        print(f"Last review timestamp: {last_uploaded}")
 
         # Fetch reviews
         print("Fetching new reviews from Google Play...")
@@ -76,7 +67,7 @@ def main():
             if not res:
                 break
 
-            new_data = [r for r in res if r["at"].astimezone(ET) > last_uploaded]
+            new_data = [r for r in res if r["at"] > last_uploaded]
             if not new_data:
                 break
 
@@ -94,9 +85,8 @@ def main():
             rows_loaded = len(df)
             print(f"Fetched {rows_loaded:,} new reviews.")
 
-            # Clean and normalize time
+            # Clean
             df['at'] = pd.to_datetime(df['at'], errors='coerce')
-            df['at'] = df['at'].dt.tz_convert(ET).dt.tz_convert('UTC')  # store as UTC
             df.rename(columns={
                 "reviewId": "review_id",
                 "userName": "user_name",
@@ -116,11 +106,7 @@ def main():
 
             records = []
             for _, row in df.iterrows():
-                created_at = (
-                    row["created_at"].strftime("%Y-%m-%d %H:%M:%S")
-                    if pd.notnull(row["created_at"])
-                    else None
-                )
+                created_at = row["created_at"].strftime("%Y-%m-%d %H:%M:%S") if pd.notnull(row["created_at"]) else None
                 records.append((
                     row["review_id"],
                     row["user_name"],
@@ -168,7 +154,7 @@ def main():
         # Insert app metadata
         print("\nFetching app metadata...")
         metadata = app(app_id, lang="en", country="us")
-        fetched_at = datetime.now(ET).astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+        fetched_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
 
         metadata_row = {
             "APP_VERSION": metadata.get("version"),
