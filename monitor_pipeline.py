@@ -1,21 +1,17 @@
 # monitor_pipeline.py
-# Unified Eastern Time version with anomaly alert and Snowflake logging
+# ---------------------------------------
+# Monitors the execution of review_update.py and logs run results to Snowflake.
+# Adds simple anomaly detection based on monthly comparison.
+# ---------------------------------------
 
 import os
 import time
 import traceback
-import smtplib
-from email.mime.text import MIMEText
 import snowflake.connector
-from datetime import datetime
-import pytz
-
-# Define Eastern Time (America/New_York)
-ET = pytz.timezone("America/New_York")
 
 
 def log_to_snowflake(status, rows_loaded, error_message, duration, anomaly_flag=None):
-    """Write pipeline run log into Snowflake table PIPELINE_MONITORING (ET timezone)."""
+    """Write pipeline run log into Snowflake table PIPELINE_MONITORING."""
     try:
         conn = snowflake.connector.connect(
             user=os.getenv("SNOWFLAKE_USER"),
@@ -37,29 +33,23 @@ def log_to_snowflake(status, rows_loaded, error_message, duration, anomaly_flag=
                 ERROR_MESSAGE STRING,
                 DURATION_SEC FLOAT,
                 ANOMALY_FLAG STRING,
-                TIMESTAMP TIMESTAMP_NTZ,
-                LOGGED_AT STRING
+                TIMESTAMP TIMESTAMP_NTZ DEFAULT CURRENT_TIMESTAMP
             );
         """)
 
-        # Truncate long error messages
+        # Truncate error message if too long
         if error_message:
             error_message = error_message[:800] + " ..." if len(error_message) > 800 else error_message
 
-        # Get current ET time
-        now_et = datetime.now(ET)
-        date_et = now_et.date()
-        timestamp_str = now_et.strftime("%Y-%m-%d %H:%M:%S")
-
-        # Insert log
+        # Insert log record
         cur.execute("""
             INSERT INTO PIPELINE_MONITORING
-            (DATE, TASK_NAME, STATUS, ROWS_LOADED, ERROR_MESSAGE, DURATION_SEC, ANOMALY_FLAG, TIMESTAMP, LOGGED_AT)
-            VALUES (%s, 'review_update', %s, %s, %s, %s, %s, %s, %s)
-        """, (date_et, status, rows_loaded, error_message, duration, anomaly_flag, timestamp_str, timestamp_str))
+            (DATE, TASK_NAME, STATUS, ROWS_LOADED, ERROR_MESSAGE, DURATION_SEC, ANOMALY_FLAG)
+            VALUES (CURRENT_DATE(), 'review_update', %s, %s, %s, %s, %s)
+        """, (status, rows_loaded, error_message, duration, anomaly_flag))
 
         conn.commit()
-        print(f"Pipeline status logged successfully at {timestamp_str} ET.")
+        print("Pipeline status logged successfully in Snowflake.")
 
     except Exception as e:
         print("Failed to log to Snowflake:", e)
@@ -73,7 +63,7 @@ def log_to_snowflake(status, rows_loaded, error_message, duration, anomaly_flag=
 
 
 def get_last_run_rows():
-    """Fetch the ROWS_LOADED value from the last successful run."""
+    """Fetch the ROWS_LOADED value from the last successful run for comparison."""
     try:
         conn = snowflake.connector.connect(
             user=os.getenv("SNOWFLAKE_USER"),
@@ -104,31 +94,8 @@ def get_last_run_rows():
             pass
 
 
-def send_email(subject, body):
-    """Send email alert when anomaly or failure occurs."""
-    smtp_host = os.getenv("SMTP_HOST")
-    smtp_port = int(os.getenv("SMTP_PORT", "465"))
-    smtp_user = os.getenv("SMTP_USER")
-    smtp_pass = os.getenv("SMTP_PASS")
-    sender = os.getenv("ALERT_FROM")
-    recipient = os.getenv("ALERT_TO")
-
-    msg = MIMEText(body, "plain", "utf-8")
-    msg["Subject"] = subject
-    msg["From"] = sender
-    msg["To"] = recipient
-
-    try:
-        with smtplib.SMTP_SSL(smtp_host, smtp_port) as server:
-            server.login(smtp_user, smtp_pass)
-            server.sendmail(sender, [recipient], msg.as_string())
-        print("Alert email sent successfully.")
-    except Exception as e:
-        print("Failed to send alert email:", e)
-
-
 def main():
-    """Run review_update.py and log result with anomaly detection."""
+    """Run review_update.py and log the result with anomaly detection."""
     import review_update
     start_time = time.time()
     status = "SUCCESS"
@@ -147,7 +114,7 @@ def main():
         # Simple anomaly detection
         last_rows = get_last_run_rows()
         if last_rows and last_rows > 0:
-            diff_ratio = rows_loaded / last_rows
+            diff_ratio = rows_loaded / last_rows if last_rows else 1
             if diff_ratio < 0.2:
                 anomaly_flag = f"WARNING: Only {rows_loaded} rows vs {last_rows} last month"
                 print(anomaly_flag)
@@ -165,19 +132,6 @@ def main():
         duration = round(time.time() - start_time, 2)
         print(f"Pipeline finished in {duration} seconds with status: {status}")
         log_to_snowflake(status, rows_loaded, error_message, duration, anomaly_flag)
-
-        # Send alert email if failure or anomaly detected
-        if status == "FAILURE" or (anomaly_flag and "WARNING" in anomaly_flag):
-            subject = f"Pipeline anomaly detected: {status}"
-            body = f"""
-Pipeline status: {status}
-Rows loaded: {rows_loaded}
-Anomaly flag: {anomaly_flag}
-Duration: {duration} seconds
-Error: {error_message or 'None'}
-Time (ET): {datetime.now(ET).strftime('%Y-%m-%d %H:%M:%S')}
-"""
-            send_email(subject, body)
 
 
 if __name__ == "__main__":
