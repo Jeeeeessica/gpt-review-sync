@@ -19,7 +19,7 @@ https://app.snowflake.com/us-east-1/ecc13202/#/review-pipeline-monitoring-dX92HO
 - 3. Anomaly Detection (Anomaly Count Trend / Anomaly Type Distribution)
 
 ## Known Issue  
-- The latest run shows **`ROWS_LOADED = 0`** but status is still marked as **`SUCCESS`** in `PIPELINE_MONITORING`.  
+- The latest run shows `ROWS_LOADED = 0` but status is still marked as `SUCCESS` in `PIPELINE_MONITORING`.  
 
 
 # 2025-10-18 Update
