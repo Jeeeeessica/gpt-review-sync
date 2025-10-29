@@ -1,58 +1,141 @@
 # Database & Ingestion Pipeline
 
-Automatically fetches the latest user reviews and metadata from the ChatGPT app on Google Play, and stores them into Snowflake.
+Automatically fetches the latest user reviews and metadata from the ChatGPT app on Google Play,  
+stores them into Snowflake, and monitors the pipeline execution through automated dashboards.
 
-- Python scripts to collect and upload data
-- Snowflake data warehouse integration
-- GitHub Actions for automated scheduling
-- Two structured tables: `reviews` and `app_metadata`
+- Python scripts to collect, upload, and monitor data  
+- Snowflake data warehouse integration  
+- GitHub Actions for automated scheduling  
+- Four structured tables:  
+  - `reviews`  
+  - `app_metadata`  
+  - `pipeline_monitoring`  
+  - `pipeline_monitoring_with_anomaly`
 
+---
 
 ### Script Overview
 
-| File              | Purpose |
-|-------------------|---------|
-| `review_sync.py`  | Initial full ingestion of all available reviews and populate the `reviews` table in Snowflake. |
-| `review_update.py`| Automated incremental updates. Scheduled to run monthly via GitHub Actions to fetch only new reviews and upsert them into Snowflake. |
+| File | Purpose |
+|------|----------|
+| `review_sync.py` | Initial full ingestion of all available reviews and populate the `reviews` table in Snowflake. |
+| `review_update.py` | Automated incremental updates. Scheduled to run monthly via GitHub Actions to fetch only new reviews and upsert them into Snowflake. |
+| `monitor_pipeline.py` | Tracks pipeline health and logs execution metrics (rows loaded, duration, status, and error messages) into Snowflake. Also triggers alert emails if anomalies are detected. |
+| `Refresh.sql` | Defines stored procedures and scheduled tasks to rebuild the dashboard view (`PIPELINE_MONITORING_WITH_ANOMALY`) and summarize pipeline performance each month. |
 
 
-##Data Schema
+
+## Data Schema
 
 ### `reviews` table
-| Column        | Type      | Description               |
-| ------------- | --------- | ------------------------- |
-| `review_id`   | STRING    | Unique ID per review      |
-| `user_name`   | STRING    | Display name of reviewer  |
-| `content`     | TEXT      | Review content            |
-| `score`       | INT       | Rating (1–5)              |
-| `created_at`  | TIMESTAMP | Date & time of review     |
-| `app_version` | STRING    | App version of the review |
 
-### `app_metadata` table 
+| Column | Type | Description |
+|---------|------|-------------|
+| `review_id` | STRING | Unique ID per review |
+| `user_name` | STRING | Display name of reviewer |
+| `content` | TEXT | Review content |
+| `score` | INT | Rating (1–5) |
+| `created_at` | TIMESTAMP | Date & time of review |
+| `app_version` | STRING | App version of the review |
 
-| Column          | Type      | Description                       |
-| --------------- | --------- | --------------------------------- |
-| `app_id`        | STRING    | App ID (e.g., com.openai.chatgpt) |
-| `version`       | STRING    | App version                       |
-| `title`         | STRING    | App title                         |
-| `score`         | FLOAT     | Average rating                    |
-| `ratings`       | INT       | Total number of ratings           |
-| `reviews`       | INT       | Total number of reviews           |
-| `real_installs` | INT       | Estimated installs                |
-| `free`          | BOOLEAN   | Whether app is free               |
-| `price`         | FLOAT     | App price (USD)                   |
-| `currency`      | STRING    | Currency symbol                   |
-| `iap`           | BOOLEAN   | In-app purchases available        |
-| `iap_range`     | STRING    | In-app price range                |
-| `fetched_at`    | TIMESTAMP | When the metadata was collected   |
+---
+
+### `app_metadata` table
+
+| Column | Type | Description |
+|---------|------|-------------|
+| `app_id` | STRING | App ID (e.g., com.openai.chatgpt) |
+| `version` | STRING | App version |
+| `title` | STRING | App title |
+| `score` | FLOAT | Average rating |
+| `ratings` | INT | Total number of ratings |
+| `reviews` | INT | Total number of reviews |
+| `real_installs` | INT | Estimated installs |
+| `free` | BOOLEAN | Whether app is free |
+| `price` | FLOAT | App price (USD) |
+| `currency` | STRING | Currency symbol |
+| `iap` | BOOLEAN | In-app purchases available |
+| `iap_range` | STRING | In-app price range |
+| `fetched_at` | TIMESTAMP | When the metadata was collected |
+
+---
+
+### `pipeline_monitoring` table
+
+| Column | Type | Description |
+|---------|------|-------------|
+| `date` | DATE | Pipeline run date |
+| `task_name` | STRING | Name of executed task (e.g., `review_update`) |
+| `status` | STRING | Execution status (`SUCCESS` / `FAILED`) |
+| `rows_loaded` | NUMBER | Number of rows inserted or updated |
+| `error_message` | STRING | Error message if failed |
+| `duration_sec` | FLOAT | Total execution time in seconds |
+| `timestamp` | TIMESTAMP_NTZ | Exact time when the job finished |
+| `anomaly_flag` | STRING | Optional anomaly indicator (`NO_DATA`, `PIPELINE_ERROR`, etc.) |
+
+---
+
+### `pipeline_monitoring_with_anomaly` view
+
+| Column | Type | Description |
+|---------|------|-------------|
+| `run_date` | DATE | Run date of the pipeline |
+| `task_name` | STRING | Pipeline or task name |
+| `status` | STRING | Execution status |
+| `rows_loaded` | NUMBER | Rows processed in the run |
+| `duration_sec` | FLOAT | Pipeline duration (seconds) |
+| `error_message` | STRING | Error message if failed |
+| `final_anomaly_flag` | STRING | Consolidated anomaly flag (`NO_DATA`, `MISSING_FIELDS`, etc.) |
+| `missing_review_id` | NUMBER | Count of rows missing `review_id` |
+| `missing_content` | NUMBER | Count of reviews missing content |
+| `missing_score` | NUMBER | Count of reviews missing scores |
+| `missing_content_pct` | NUMBER | Percentage of reviews missing content |
+
+---
+
+## Dashboard Overview
+
+The monitoring dashboard visualizes key insights from the pipeline logs and data quality checks,  
+powered by the Snowflake view `PIPELINE_MONITORING_WITH_ANOMALY`.
+(https://app.snowflake.com/us-east-1/ecc13202/#/review-pipeline-monitoring-dX92HO3pp)
 
 
-## GitHub Actions Schedule
+**1. Pipeline Performance**
+
+- **Pipeline Duration Trend** 
+  Average runtime per execution  
+- **Rows Loaded Trend**
+  Total number of rows ingested per run  
+
+**2. Data Quality**
+
+- **Missing Content % Trend**
+  Percentage of reviews missing text content  
+- **Review Data Completeness** 
+  Overall completeness score (0–100%)  
+
+**3. Anomaly Detection**
+
+- **Anomaly Count Trend** 
+  Number of anomalies detected per run  
+- **Anomaly Type Distribution** 
+  Breakdown by category (`NO_DATA`, `MISSING_FIELDS`, `PIPELINE_ERROR`)  
+
+
+## Scheduling & Automation
 
 This repository is configured to run data updates automatically every month using [GitHub Actions](https://docs.github.com/en/actions).
 - Workflow file: `.github/workflows/review_update.yml`
 - Schedule: `0 1 1 * *` → Runs on the 1st of each month at 01:00 UTC
 - Manual trigger supported via GitHub UI
+- `Refresh.sql` schedules monthly dashboard refresh at 9:00 AM ET 
+
+## Alerting 
+
+`monitor_pipeline.py` can send email alerts through SMTP when:
+- A pipeline run fails  
+- No new data is ingested  
+- Data quality drops below thresholds
 
 
 # ChatGPT App Review Analysis 
